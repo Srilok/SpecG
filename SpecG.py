@@ -8,79 +8,73 @@ Created on Thu Jun  8 15:29:56 2017
 import numpy as np 
 from sys import argv 
 from dump import dump 
+from scipy.fftpack import fft, fftfreq
 
-script, input_file1, input_file2 = argv 
+script, input_file = argv 
 
+correlation_length = int(raw_input("Enter the length of correlation:"))
+cross_section = float(raw_input("Enter the cross-section of interface (A^2):"))
+dt = float(raw_input("Enter the timestep used in MD (in ps):"))
 #%%
 #Reading the dump files
-d1 = dump(input_file1)
-d2 = dump(input_file2)
+d = dump(input_file)
+#d2 = dump(input_file2)
 
-time_steps1 = d1.time()
-time_steps2 = d2.time()
+time_steps = d.time()
+#%%
+#time_steps2 = d2.time()
+atom_list = d.vecs(time_steps[0],"id")
+atom_list = np.array(atom_list, dtype = np.int16) 
+num_atoms = len(atom_list)
+#num_atoms2 = len(d2.vecs(time_steps2[0],"vx"))
 
-num_atoms1 = len(d1.vecs(time_steps1[0],"fx"))
-num_atoms2 = len(d2.vecs(time_steps2[0],"fx"))
+del_T = dt*(time_steps[1] - time_steps[0])
+#del_T2 = dt*(time_steps2[1] - time_steps2[0]) 
 
+scaling_const = 2/(cross_section*del_T*num_atoms)
+#%%
+#Allocating memory
+q_12x = np.zeros(correlation_length, dtype = np.complex64)
+q_12y = np.zeros(correlation_length, dtype = np.complex64)
+q_12z = np.zeros(correlation_length, dtype = np.complex64)
 #%%
 print   "Collecting velocities and force data..."
 
-#Allocating memeory for velocities      
-vx1 = np.zeros([num_atoms1,len(time_steps1)], dtype = np.float32)
-vy1 = np.zeros([num_atoms2,len(time_steps1)], dtype = np.float32)
-vz1 = np.zeros([num_atoms1,len(time_steps1)], dtype = np.float32)  
-
-
-#Allocating memory for forces
-fx1 = np.zeros([num_atoms1,len(time_steps1)], dtype = np.float32)
-fy1 = np.zeros([num_atoms1,len(time_steps1)], dtype = np.float32)
-fz1 = np.zeros([num_atoms1,len(time_steps1)], dtype = np.float32)
-
-#Obtaining velocities and force data 
-for i in range(len(time_steps1)):
+#Obtaining velocities, performing fourier transform
+for i in atom_list:
+    print i
     
-    vx1[:,i], vy1[:,i], vz1[:,i], fx1[:,i], fy1[:,i], fz1[:,i] = d1.vecs(
-                                            time_steps1[i], "vx", "vy", "vz", 
-                                            "fx", "fy", "fz")
-
-del d1 
-#%%
-
-#Allocating memeory for velocities              
-vx2 = np.zeros([num_atoms1,len(time_steps1)], dtype = np.float32)   
-vy2 = np.zeros([num_atoms1,len(time_steps1)], dtype = np.float32)
-vz2 = np.zeros([num_atoms1,len(time_steps1)], dtype = np.float32)
-
-
-#Allocating memory for forces
-fx2 = np.zeros([num_atoms1,len(time_steps1)], dtype = np.float32)
-fy2 = np.zeros([num_atoms1,len(time_steps1)], dtype = np.float32)
-fz2 = np.zeros([num_atoms1,len(time_steps1)], dtype = np.float32)
-
-
-
-
-for i in range(len(time_steps2)): 
+    if i%1000 ==0:
+        print "Number of atoms covered:"+str(i)
     
-    vx2[:,i], vy2[:,i], vz2[:,i], fx2[:,i], fy2[:,i], fz2[:,i] = d2.vecs(
-                                            time_steps2[i], "vx", "vy", "vz", 
-                                            "fx", "fy", "fz")
-del d2
+    vx, vy, vz, fx, fy, fz = d.atom(i, "vx", "vy", "vz",
+                                   "c_F_C_M[1]", "c_F_C_M[2]", "c_F_C_M[3]") 
+    
+    VX = fft(vx)
+    VY = fft(vy)
+    VZ = fft(vz)
+    
+    FX = fft(fx)
+    FY = fft(fy)
+    FZ = fft(fz)
 
-#%%
 
-#Computing F_i from Q_1->2
+    del vx,vy,vz,fx,fy,fz
+    #Performing cross-correlation for each atom and accumulating the sum    
+    for j in range(correlation_length): 
+    
+        n_sample = len(FX)-j
 
-Fi_12 = np.zeros([num_atoms1], dtype = np.float32) 
+    
+        q_12x[j] += np.sum(scaling_const * FX[:n_sample] 
+                            * np.conj(VX[j:n_sample+j]))/n_sample
+        q_12y[j] += np.sum(scaling_const * FY[:n_sample]
+                            * np.conj(VY[j:n_sample+j]))/n_sample
+        q_12z[j] += np.sum(scaling_const * FZ[:n_sample] 
+                            * np.conj(VZ[j:n_sample+j]))/n_sample
 
-print    "Computing F_i (= sum(f_ij, j belongs to material 2))..."
-
-for i in range(num_atoms1): 
-    for j in range(num_atom2): 
-        Fi_12[i] += 
+Q_tot_12 = q_12x + q_12y + q_12z
+                
+#        
         
-
-print    "Performing fourier transform..."
-
-
     
