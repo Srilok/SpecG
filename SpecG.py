@@ -90,6 +90,8 @@ for i in atom_list:
 
 
 Q_tot_12 = q_12x + q_12y + q_12z
+
+np.savetext("Q_w.data", np.transpose(Q_tot_12))
 #%%
 
         
